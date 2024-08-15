@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 import google.generativeai as genai
+import uuid  # Pour générer des identifiants uniques
 
 # Configuration de l'API Google AI
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
@@ -23,6 +24,14 @@ model = genai.GenerativeModel(
 
 # Dictionnaire global pour stocker l'historique de chaque utilisateur
 user_histories = {}
+# Compteur pour générer des user_id simples
+user_counter = 0
+
+def generate_user_id():
+    """Génère un identifiant utilisateur séquentiel."""
+    global user_counter
+    user_counter += 1
+    return str(user_counter)  # Les IDs générés seront '1', '2', '3', etc.
 
 def upload_to_gemini(path, mime_type=None):
     """Uploads the given file to Gemini."""
@@ -36,8 +45,9 @@ def gemini_vision_get():
     text = request.args.get('text')
     image_url = request.args.get('image_url')
 
+    # Si aucun user_id n'est fourni, en générer un
     if not user_id:
-        return jsonify({'error': 'user_id parameter not provided'}), 400
+        user_id = generate_user_id()
 
     # Récupérer l'historique de l'utilisateur ou en créer un nouveau
     if user_id not in user_histories:
@@ -58,7 +68,7 @@ def gemini_vision_get():
         chat_session = model.start_chat(history=user_history)
         response = chat_session.send_message(text)
         user_history.append({"role": "model", "parts": [response.text]})
-        return jsonify({'response': response.text})
+        return jsonify({'user_id': user_id, 'response': response.text})
 
     elif text:
         user_history.append({
@@ -69,7 +79,7 @@ def gemini_vision_get():
         chat_session = model.start_chat(history=user_history)
         response = chat_session.send_message(text)
         user_history.append({"role": "model", "parts": [response.text]})
-        return jsonify({'response': response.text})
+        return jsonify({'user_id': user_id, 'response': response.text})
 
     else:
         return jsonify({'error': 'Text or image_url parameter not provided'}), 400
