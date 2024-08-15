@@ -21,6 +21,9 @@ model = genai.GenerativeModel(
     generation_config=generation_config,
 )
 
+# Dictionnaire global pour stocker l'historique de chaque utilisateur
+user_histories = {}
+
 def upload_to_gemini(path, mime_type=None):
     """Uploads the given file to Gemini."""
     file = genai.upload_file(path, mime_type=mime_type)
@@ -29,39 +32,45 @@ def upload_to_gemini(path, mime_type=None):
 
 @app.route('/api/gemini_vision', methods=['GET'])
 def gemini_vision_get():
-    # GET request: expects 'text' and 'image_url' as query parameters
+    user_id = request.args.get('user_id')
     text = request.args.get('text')
     image_url = request.args.get('image_url')
+
+    if not user_id:
+        return jsonify({'error': 'user_id parameter not provided'}), 400
+
+    # Récupérer l'historique de l'utilisateur ou en créer un nouveau
+    if user_id not in user_histories:
+        user_histories[user_id] = []
+
+    user_history = user_histories[user_id]
 
     if image_url and text:
         # Simuler le téléchargement de l'image (remplacer par une méthode pour gérer les images si nécessaire)
         image_path = download_image(image_url)
         uploaded_file = upload_to_gemini(image_path, mime_type="image/jpeg")
 
-        chat_history = [
-            {
-                "role": "user",
-                "parts": [
-                    uploaded_file,
-                    text,
-                ],
-            }
-        ]
+        user_history.append({
+            "role": "user",
+            "parts": [uploaded_file, text],
+        })
 
-        chat_session = model.start_chat(history=chat_history)
+        chat_session = model.start_chat(history=user_history)
         response = chat_session.send_message(text)
+        user_history.append({"role": "model", "parts": [response.text]})
         return jsonify({'response': response.text})
+
     elif text:
-        chat_history = [
-            {
-                "role": "user",
-                "parts": [text],
-            }
-        ]
+        user_history.append({
+            "role": "user",
+            "parts": [text],
+        })
 
-        chat_session = model.start_chat(history=chat_history)
+        chat_session = model.start_chat(history=user_history)
         response = chat_session.send_message(text)
+        user_history.append({"role": "model", "parts": [response.text]})
         return jsonify({'response': response.text})
+
     else:
         return jsonify({'error': 'Text or image_url parameter not provided'}), 400
 
