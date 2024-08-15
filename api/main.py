@@ -2,6 +2,7 @@ import os
 from flask import Flask, request, jsonify
 import google.generativeai as genai
 import uuid  # Pour générer des identifiants uniques
+import json  # Pour stocker les historiques des utilisateurs
 
 # Configuration de l'API Google AI
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
@@ -24,14 +25,24 @@ model = genai.GenerativeModel(
 
 # Dictionnaire global pour stocker l'historique de chaque utilisateur
 user_histories = {}
-# Compteur pour générer des user_id simples
-user_counter = 0
+# Fichier pour stocker les historiques des utilisateurs
+histories_file = 'user_histories.json'
+
+def load_histories():
+    """Charge les historiques des utilisateurs depuis le fichier."""
+    global user_histories
+    if os.path.exists(histories_file):
+        with open(histories_file, 'r') as f:
+            user_histories = json.load(f)
+
+def save_histories():
+    """Sauvegarde les historiques des utilisateurs dans le fichier."""
+    with open(histories_file, 'w') as f:
+        json.dump(user_histories, f)
 
 def generate_user_id():
-    """Génère un identifiant utilisateur séquentiel."""
-    global user_counter
-    user_counter += 1
-    return str(user_counter)  # Les IDs générés seront '1', '2', '3', etc.
+    """Génère un identifiant utilisateur unique."""
+    return str(uuid.uuid4())  # Génère un UUID unique
 
 def upload_to_gemini(path, mime_type=None):
     """Uploads the given file to Gemini."""
@@ -48,12 +59,10 @@ def gemini_vision_get():
     # Si aucun user_id n'est fourni, en générer un
     if not user_id:
         user_id = generate_user_id()
-
-    # Récupérer l'historique de l'utilisateur ou en créer un nouveau
-    if user_id not in user_histories:
         user_histories[user_id] = []
 
-    user_history = user_histories[user_id]
+    # Récupérer l'historique de l'utilisateur ou en créer un nouveau
+    user_history = user_histories.get(user_id, [])
 
     if image_url and text:
         # Simuler le téléchargement de l'image (remplacer par une méthode pour gérer les images si nécessaire)
@@ -68,6 +77,8 @@ def gemini_vision_get():
         chat_session = model.start_chat(history=user_history)
         response = chat_session.send_message(text)
         user_history.append({"role": "model", "parts": [response.text]})
+        user_histories[user_id] = user_history
+        save_histories()
         return jsonify({'user_id': user_id, 'response': response.text})
 
     elif text:
@@ -79,6 +90,8 @@ def gemini_vision_get():
         chat_session = model.start_chat(history=user_history)
         response = chat_session.send_message(text)
         user_history.append({"role": "model", "parts": [response.text]})
+        user_histories[user_id] = user_history
+        save_histories()
         return jsonify({'user_id': user_id, 'response': response.text})
 
     else:
@@ -100,4 +113,5 @@ def download_image(image_url):
     return image_path
 
 if __name__ == '__main__':
+    load_histories()  # Charger les historiques au démarrage
     app.run(host='0.0.0.0', port=5000)
